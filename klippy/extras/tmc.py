@@ -878,6 +878,9 @@ class BaseTMCCurrentHelper:
             return False
         return True
 
+    def apply_current(self, print_time, homing=False):
+        pass
+
     def set_current(
         self, new_current, hold_current, print_time, force=False, homing=False
     ):

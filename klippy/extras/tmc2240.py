@@ -4,6 +4,7 @@
 # Copyright (C) 2023  Alex Voinea <voinea.dragos.alexandru@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import logging
 import math
 from . import tmc, tmc2130, tmc_uart
 
@@ -286,9 +287,10 @@ class TMC2240CurrentHelper(tmc.BaseTMCCurrentHelper):
             "current_range", current_range, minval=current_range, maxval=3
         )
         self.fields.set_field("current_range", self.current_range)
-        self.cs = config.getint("driver_CS", 31, minval=0, maxval=31)
+        self.cs = config.getint("driver_CS", None, minval=0, maxval=31)
+        self.homing_cs = config.getint("homing_CS", None, minval=0, maxval=31)
         gscaler, irun, ihold = self._calc_current(
-            self.req_run_current, self.req_hold_current
+            self.req_run_current, self.req_hold_current, self.cs
         )
         self.fields.set_field("globalscaler", gscaler)
         self.fields.set_field("ihold", ihold)
@@ -300,17 +302,18 @@ class TMC2240CurrentHelper(tmc.BaseTMCCurrentHelper):
         return (KIFS[current_range] / self.Rref) / math.sqrt(2.0)
 
     def _calc_current_range(self, current):
+        current_range = 0
         for current_range in range(4):
             if current <= self._get_ifs_rms(current_range):
                 break
         return current_range
 
-    def _calc_globalscaler(self, current):
+    def _calc_globalscaler(self, current, req_cs):
         ifs_rms = self._get_ifs_rms()
-        globalscaler = math.floor(
-            (current * 256.0 * 32) / (ifs_rms * (self.cs + 1))
-        )
-        if globalscaler == 256:
+        cs = self.cs if req_cs is None else req_cs
+        cs = 31 if cs is None else cs
+        globalscaler = math.floor((current * 256.0 * 32) / (ifs_rms * (cs + 1)))
+        if req_cs is None and globalscaler == 256:
             return 0
         if 1 <= globalscaler <= 31 or globalscaler > 256:
             current_range = self.fields.get_field("current_range")
@@ -320,16 +323,27 @@ class TMC2240CurrentHelper(tmc.BaseTMCCurrentHelper):
                     self.name,
                     globalscaler,
                     self.Rref,
-                    self.cs,
+                    cs,
                     f"{current_range:02b}",
                     f"{(KIFS[current_range] / 1000):.2f}",
                 )
             )
         return globalscaler
 
-    def _calc_current(self, run_current, hold_current):
-        gscaler = self._calc_globalscaler(run_current)
-        irun = self.cs
+    def _calc_current_bits(self, current, globalscaler):
+        ifs_rms = self._get_ifs_rms()
+        if not globalscaler:
+            globalscaler = 256
+        cs = int(
+            (current * 256.0 * 32.0) / (globalscaler * ifs_rms) - 1.0 + 0.5
+        )
+        return max(0, min(31, cs))
+
+    def _calc_current(self, run_current, hold_current, cs):
+        gscaler = self._calc_globalscaler(run_current, cs)
+        irun = (
+            self._calc_current_bits(run_current, gscaler) if cs is None else cs
+        )
         ihold = math.floor((min((hold_current / run_current) * irun, irun)))
         return gscaler, irun, ihold
 
@@ -354,8 +368,13 @@ class TMC2240CurrentHelper(tmc.BaseTMCCurrentHelper):
         )
 
     def apply_current(self, print_time, homing=False):
+        cs = self.homing_cs if homing else self.cs
         gscaler, irun, ihold = self._calc_current(
-            self.actual_current, self.req_hold_current
+            self.actual_current, self.req_hold_current, cs
+        )
+        logging.info(f"Homing: {homing}")
+        logging.info(
+            f"Current Scaling changed to: (gscaler: {gscaler}, irun: {irun}, ihold: {ihold}"
         )
         val = self.fields.set_field("globalscaler", gscaler)
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)

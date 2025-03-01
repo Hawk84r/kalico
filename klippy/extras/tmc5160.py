@@ -272,15 +272,13 @@ class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
         super().__init__(config, mcu_tmc, MAX_CURRENT)
 
         self.cs = config.getint("driver_CS", None, minval=0, maxval=31)
-        self.homing_cs = config.getint(
-            "homing_CS", None, minval=0, maxval=31
-        )
-        self.run = self._calc_current(
+        self.homing_cs = config.getint("homing_CS", None, minval=0, maxval=31)
+        gscaler, irun, ihold = self._calc_current(
             self.req_run_current, self.req_hold_current, self.cs
         )
-        self.fields.set_field("globalscaler", self.run["gscaler"])
-        self.fields.set_field("ihold", self.run["ihold"])
-        self.fields.set_field("irun", self.run["irun"])
+        self.fields.set_field("globalscaler", gscaler)
+        self.fields.set_field("ihold", ihold)
+        self.fields.set_field("irun", irun)
 
     def _calc_globalscaler(self, current, req_cs):
         cs = self.cs if req_cs is None else req_cs
@@ -322,12 +320,10 @@ class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
     def _calc_current(self, run_current, hold_current, cs):
         gscaler = self._calc_globalscaler(run_current, cs)
         irun = (
-            self._calc_current_bits(run_current, gscaler)
-            if cs is None
-            else cs
+            self._calc_current_bits(run_current, gscaler) if cs is None else cs
         )
         ihold = math.floor(min((hold_current / run_current) * irun, irun))
-        return {"gscaler": gscaler, "irun": irun, "ihold": ihold}
+        return gscaler, irun, ihold
 
     def _calc_current_from_field(self, field_name):
         globalscaler = self.fields.get_field("globalscaler")
@@ -354,15 +350,17 @@ class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
 
     def apply_current(self, print_time, homing=False):
         cs = self.homing_cs if homing else self.cs
-        current_scaling = self._calc_current(
+        gscaler, irun, ihold = self._calc_current(
             self.actual_current, self.req_hold_current, cs
         )
         logging.info(f"Homing: {homing}")
-        logging.info(f"Current Scaling changed to: {current_scaling}")
-        val = self.fields.set_field("globalscaler", current_scaling["gscaler"])
+        logging.info(
+            f"Current Scaling changed to: (gscaler: {gscaler}, irun: {irun}, ihold: {ihold}"
+        )
+        val = self.fields.set_field("globalscaler", gscaler)
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)
-        self.fields.set_field("ihold", current_scaling["ihold"])
-        val = self.fields.set_field("irun", current_scaling["irun"])
+        self.fields.set_field("ihold", ihold)
+        val = self.fields.set_field("irun", irun)
         self.mcu_tmc.set_register("IHOLD_IRUN", val, print_time)
 
 
