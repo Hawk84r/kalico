@@ -357,6 +357,7 @@ class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
         current_scaling = self._calc_current(
             self.actual_current, self.req_hold_current, cs
         )
+        logging.info(f"Homing: {homing}")
         logging.info(f"Current Scaling changed to: {current_scaling}")
         val = self.fields.set_field("globalscaler", current_scaling["gscaler"])
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)
