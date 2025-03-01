@@ -3,6 +3,7 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import logging
 import math
 from . import tmc
 from . import tmc2130
@@ -356,6 +357,7 @@ class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
         current_scaling = self._calc_current(
             self.actual_current, self.req_hold_current, cs
         )
+        logging.info(f"Current Scaling changed to: {current_scaling}")
         val = self.fields.set_field("globalscaler", current_scaling["gscaler"])
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)
         self.fields.set_field("ihold", current_scaling["ihold"])
