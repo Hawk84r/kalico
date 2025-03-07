@@ -3,7 +3,6 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import logging
 import math
 from . import tmc
 from . import tmc2130
@@ -352,10 +351,6 @@ class TMC5160CurrentHelper(tmc.BaseTMCCurrentHelper):
         cs = self.homing_cs if homing else self.cs
         gscaler, irun, ihold = self._calc_current(
             self.actual_current, self.req_hold_current, cs
-        )
-        logging.info(f"Homing: {homing}")
-        logging.info(
-            f"Current Scaling changed to: (gscaler: {gscaler}, irun: {irun}, ihold: {ihold}"
         )
         val = self.fields.set_field("globalscaler", gscaler)
         self.mcu_tmc.set_register("GLOBALSCALER", val, print_time)
